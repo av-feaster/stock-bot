@@ -5,6 +5,7 @@ Uses yfinance (free, no API key) for OHLCV and index data.
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta
 
 import pandas as pd
@@ -36,24 +37,34 @@ class MarketDataFetcher:
         ticker = self._ticker(symbol)
         end   = datetime.today()
         start = end - timedelta(days=LOOKBACK_DAYS)
-        try:
-            df = yf.download(
-                ticker,
-                start=start.strftime("%Y-%m-%d"),
-                end=end.strftime("%Y-%m-%d"),
-                progress=False,
-                auto_adjust=True,
-            )
-            if df.empty:
-                logger.warning("No data for %s", symbol)
-            # Flatten MultiIndex columns if present
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-            df.index = pd.to_datetime(df.index)
-            return df
-        except Exception as e:
-            logger.error("OHLCV fetch failed for %s: %s", symbol, e)
-            return pd.DataFrame()
+        
+        # Try multiple data sources
+        for attempt in range(3):  # Retry 3 times
+            try:
+                df = yf.download(
+                    ticker,
+                    start=start.strftime("%Y-%m-%d"),
+                    end=end.strftime("%Y-%m-%d"),
+                    progress=False,
+                    auto_adjust=True,
+                    timeout=10,  # Add timeout
+                )
+                if df.empty:
+                    logger.warning("No data for %s (attempt %d)", symbol, attempt + 1)
+                    if attempt < 2:
+                        time.sleep(2)  # Wait before retry
+                        continue
+                # Flatten MultiIndex columns if present
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                df.index = pd.to_datetime(df.index)
+                return df
+            except Exception as e:
+                logger.error("OHLCV fetch failed for %s (attempt %d): %s", symbol, attempt + 1, e)
+                if attempt < 2:
+                    time.sleep(2)
+                    continue
+        return pd.DataFrame()
 
     async def get_index_summary(self) -> dict:
         """Return {index_name: {price, change_pct, trend}} for all tracked indices."""
