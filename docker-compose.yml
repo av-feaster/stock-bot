@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  stockbot:
+    build: .
+    container_name: stockbot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+      - ./data:/app/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

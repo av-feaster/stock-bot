@@ -1,0 +1,29 @@
+# Run the daily stock report at 9:00 AM IST. No server needed — 100% free.
+# Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID as repo secrets.
+name: Daily stock report
+
+on:
+  schedule:
+    # 9:00 AM IST = 3:30 AM UTC (India has no DST)
+    - cron: "30 3 * * *"
+  workflow_dispatch:  # allow manual run from Actions tab
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run report
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python run_report_once.py

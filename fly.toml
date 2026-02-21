@@ -1,0 +1,11 @@
+# Fly.io — free tier runs 3 small VMs. No HTTP port; bot runs as a worker.
+# Deploy: fly launch (then fly secrets set TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...)
+app = "stock-bot"
+
+[build]
+  dockerfile = "Dockerfile"
+
+# No [[services]] / http_service = worker only; no port needed
+
+[env]
+  # Set via: fly secrets set TELEGRAM_BOT_TOKEN=xxx TELEGRAM_CHAT_ID=xxx
