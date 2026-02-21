@@ -23,11 +23,11 @@ DAILY_REPORT_TIME_IST: tuple[int, int] = (9, 0)   # 09:00 AM IST
 
 # ── Tracked stocks (NSE tickers) ─────────────────────────────────────────────
 TRACKED_STOCKS: list[str] = [
-    "NATCOPHARM",
-    "WELSPUNLIV",
-    "MCX",
-    "AUBANK",
-    "GRAPHITE",
+    "RELIANCE",
+    "TCS", 
+    "HDFCBANK",
+    "INFY",
+    "ICICIBANK",
 ]
 
 # ── Technical thresholds ─────────────────────────────────────────────────────
