@@ -1,6 +1,7 @@
 """
 Market data fetcher.
 Uses yfinance (free, no API key) for OHLCV and index data.
+Falls back to NSE API when yfinance fails.
 """
 
 import asyncio
@@ -16,11 +17,14 @@ from config.settings import (
     LOOKBACK_DAYS,
     YF_SUFFIX,
 )
+from modules.nse_data import NSEDataFetcher
 
 logger = logging.getLogger("MarketData")
 
 
 class MarketDataFetcher:
+    def __init__(self):
+        self.nse_fetcher = NSEDataFetcher()
 
     def _ticker(self, symbol: str) -> str:
         """Convert NSE symbol → yfinance ticker."""
@@ -38,8 +42,8 @@ class MarketDataFetcher:
         end   = datetime.today()
         start = end - timedelta(days=LOOKBACK_DAYS)
         
-        # Try multiple data sources
-        for attempt in range(3):  # Retry 3 times
+        # Try yfinance first
+        for attempt in range(2):  # Reduced attempts
             try:
                 df = yf.download(
                     ticker,
@@ -47,12 +51,12 @@ class MarketDataFetcher:
                     end=end.strftime("%Y-%m-%d"),
                     progress=False,
                     auto_adjust=True,
-                    timeout=10,  # Add timeout
+                    timeout=10,
                 )
                 if df.empty:
-                    logger.warning("No data for %s (attempt %d)", symbol, attempt + 1)
-                    if attempt < 2:
-                        time.sleep(2)  # Wait before retry
+                    logger.warning("No data for %s from yfinance (attempt %d)", symbol, attempt + 1)
+                    if attempt < 1:
+                        time.sleep(2)
                         continue
                 # Flatten MultiIndex columns if present
                 if isinstance(df.columns, pd.MultiIndex):
@@ -60,10 +64,20 @@ class MarketDataFetcher:
                 df.index = pd.to_datetime(df.index)
                 return df
             except Exception as e:
-                logger.error("OHLCV fetch failed for %s (attempt %d): %s", symbol, attempt + 1, e)
-                if attempt < 2:
+                logger.error("yfinance failed for %s (attempt %d): %s", symbol, attempt + 1, e)
+                if attempt < 1:
                     time.sleep(2)
                     continue
+        
+        # Fallback to NSE API
+        logger.info("Falling back to NSE API for %s", symbol)
+        try:
+            nse_df = self.nse_fetcher.get_stock_data(symbol)
+            if not nse_df.empty:
+                return nse_df
+        except Exception as e:
+            logger.error("NSE fallback failed for %s: %s", symbol, e)
+        
         return pd.DataFrame()
 
     async def get_index_summary(self) -> dict:
@@ -74,17 +88,20 @@ class MarketDataFetcher:
     def _fetch_indices(self) -> dict:
         results = {}
         for name, ticker in INDICES.items():
+            # Try yfinance first
             try:
                 df = yf.download(
                     ticker,
                     period="5d",
                     progress=False,
                     auto_adjust=True,
+                    timeout=10,
                 )
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
                 if df.empty or len(df) < 2:
-                    results[name] = {"price": None, "change_pct": None}
+                    logger.warning("No yfinance data for %s, trying NSE", name)
+                    results[name] = self.nse_fetcher.get_index_data(ticker)
                     continue
                 close_today = float(df["Close"].iloc[-1])
                 close_prev  = float(df["Close"].iloc[-2])
@@ -95,6 +112,7 @@ class MarketDataFetcher:
                     "trend":      "▲" if change_pct >= 0 else "▼",
                 }
             except Exception as e:
-                logger.error("Index fetch failed for %s: %s", name, e)
-                results[name] = {"price": None, "change_pct": None, "trend": "—"}
+                logger.error("yfinance index failed for %s: %s, trying NSE", name, e)
+                # Fallback to NSE
+                results[name] = self.nse_fetcher.get_index_data(ticker)
         return results
