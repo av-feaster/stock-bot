@@ -38,45 +38,42 @@ class MarketDataFetcher:
         return await loop.run_in_executor(None, self._fetch_ohlcv, symbol)
 
     def _fetch_ohlcv(self, symbol: str) -> pd.DataFrame:
+        """Direct NSE API as primary source"""
+        
+        # Try NSE API first (primary)
+        logger.info("Fetching data from NSE API for %s", symbol)
+        try:
+            nse_df = self.nse_fetcher.get_stock_data(symbol)
+            if not nse_df.empty:
+                logger.info("✅ Got data from NSE API for %s", symbol)
+                return nse_df
+        except Exception as e:
+            logger.error("NSE API failed for %s: %s", symbol, e)
+        
+        # Fallback to yfinance (secondary)
+        logger.warning("Falling back to yfinance for %s", symbol)
         ticker = self._ticker(symbol)
         end   = datetime.today()
         start = end - timedelta(days=LOOKBACK_DAYS)
         
-        # Try yfinance first
-        for attempt in range(2):  # Reduced attempts
-            try:
-                df = yf.download(
-                    ticker,
-                    start=start.strftime("%Y-%m-%d"),
-                    end=end.strftime("%Y-%m-%d"),
-                    progress=False,
-                    auto_adjust=True,
-                    timeout=10,
-                )
-                if df.empty:
-                    logger.warning("No data for %s from yfinance (attempt %d)", symbol, attempt + 1)
-                    if attempt < 1:
-                        time.sleep(2)
-                        continue
+        try:
+            df = yf.download(
+                ticker,
+                start=start.strftime("%Y-%m-%d"),
+                end=end.strftime("%Y-%m-%d"),
+                progress=False,
+                auto_adjust=True,
+                timeout=10,
+            )
+            if not df.empty:
                 # Flatten MultiIndex columns if present
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
                 df.index = pd.to_datetime(df.index)
+                logger.info("✅ Got data from yfinance for %s", symbol)
                 return df
-            except Exception as e:
-                logger.error("yfinance failed for %s (attempt %d): %s", symbol, attempt + 1, e)
-                if attempt < 1:
-                    time.sleep(2)
-                    continue
-        
-        # Fallback to NSE API
-        logger.info("Falling back to NSE API for %s", symbol)
-        try:
-            nse_df = self.nse_fetcher.get_stock_data(symbol)
-            if not nse_df.empty:
-                return nse_df
         except Exception as e:
-            logger.error("NSE fallback failed for %s: %s", symbol, e)
+            logger.error("yfinance fallback failed for %s: %s", symbol, e)
         
         return pd.DataFrame()
 
@@ -86,9 +83,22 @@ class MarketDataFetcher:
         return await loop.run_in_executor(None, self._fetch_indices)
 
     def _fetch_indices(self) -> dict:
+        """Direct NSE API as primary source"""
         results = {}
         for name, ticker in INDICES.items():
-            # Try yfinance first
+            # Try NSE API first (primary)
+            logger.info("Fetching index data from NSE API for %s", name)
+            try:
+                nse_data = self.nse_fetcher.get_index_data(ticker)
+                if nse_data.get('price') is not None:
+                    results[name] = nse_data
+                    logger.info("✅ Got index data from NSE API for %s", name)
+                    continue
+            except Exception as e:
+                logger.error("NSE index API failed for %s: %s", name, e)
+            
+            # Fallback to yfinance (secondary)
+            logger.warning("Falling back to yfinance for %s", name)
             try:
                 df = yf.download(
                     ticker,
@@ -99,20 +109,19 @@ class MarketDataFetcher:
                 )
                 if isinstance(df.columns, pd.MultiIndex):
                     df.columns = df.columns.get_level_values(0)
-                if df.empty or len(df) < 2:
-                    logger.warning("No yfinance data for %s, trying NSE", name)
-                    results[name] = self.nse_fetcher.get_index_data(ticker)
-                    continue
-                close_today = float(df["Close"].iloc[-1])
-                close_prev  = float(df["Close"].iloc[-2])
-                change_pct  = ((close_today - close_prev) / close_prev) * 100
-                results[name] = {
-                    "price":      round(close_today, 2),
-                    "change_pct": round(change_pct, 2),
-                    "trend":      "▲" if change_pct >= 0 else "▼",
-                }
+                if not df.empty and len(df) >= 2:
+                    close_today = float(df["Close"].iloc[-1])
+                    close_prev  = float(df["Close"].iloc[-2])
+                    change_pct  = ((close_today - close_prev) / close_prev) * 100
+                    results[name] = {
+                        "price":      round(close_today, 2),
+                        "change_pct": round(change_pct, 2),
+                        "trend":      "▲" if change_pct >= 0 else "▼",
+                    }
+                    logger.info("✅ Got index data from yfinance for %s", name)
+                else:
+                    results[name] = {"price": None, "change_pct": None, "trend": "—"}
             except Exception as e:
-                logger.error("yfinance index failed for %s: %s, trying NSE", name, e)
-                # Fallback to NSE
-                results[name] = self.nse_fetcher.get_index_data(ticker)
+                logger.error("yfinance index fallback failed for %s: %s", name, e)
+                results[name] = {"price": None, "change_pct": None, "trend": "—"}
         return results
