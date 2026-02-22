@@ -253,12 +253,6 @@ async def _run_scheduler_only():
 
 
 def main():
-    # Ensure main thread has an event loop (avoids DeprecationWarning / RuntimeError)
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
-
     logger.info("🚀 StockBot starting...")
 
     if SCHEDULER_ONLY:
