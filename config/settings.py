@@ -17,6 +17,10 @@ if not TELEGRAM_TOKEN:
 if not CHAT_ID:
     raise EnvironmentError("TELEGRAM_CHAT_ID is not set in .env")
 
+# When True, only run the daily scheduled report (no /start, /report, etc.).
+# Use on Railway/Fly so one instance doesn't conflict with a local bot.
+SCHEDULER_ONLY: bool = os.getenv("BOT_SCHEDULER_ONLY", "").lower() in ("1", "true", "yes")
+
 # ── Schedule ──────────────────────────────────────────────────────────────────
 # Tuple (hour, minute) in IST — bot will convert to UTC automatically
 DAILY_REPORT_TIME_IST: tuple[int, int] = (9, 0)   # 09:00 AM IST

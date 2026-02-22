@@ -21,6 +21,7 @@ from config.settings import (
     CHAT_ID,
     DAILY_REPORT_TIME_IST,
     TRACKED_STOCKS,
+    SCHEDULER_ONLY,
 )
 from modules.market_data import MarketDataFetcher
 from modules.technical import TechnicalAnalyzer
@@ -155,18 +156,10 @@ async def cmd_status(update, context: ContextTypes.DEFAULT_TYPE):
 # App entry point
 # ──────────────────────────────────────────────
 
-def main():
-    # Python 3.14+ may not set an event loop on the main thread
-    try:
-        asyncio.get_event_loop()
-    except RuntimeError:
-        asyncio.set_event_loop(asyncio.new_event_loop())
-
-    logger.info("🚀 StockBot starting...")
-
+def _build_app() -> Application:
+    """Build application with handlers and daily job."""
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Register command handlers
     app.add_handler(CommandHandler("start",     cmd_start))
     app.add_handler(CommandHandler("help",      cmd_start))
     app.add_handler(CommandHandler("report",    cmd_report))
@@ -174,7 +167,6 @@ def main():
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(CommandHandler("status",    cmd_status))
 
-    # Schedule daily report (IST = UTC+5:30)
     h, m = DAILY_REPORT_TIME_IST
     utc_h = (h - 5) % 24
     utc_m = (m - 30) % 60
@@ -191,7 +183,41 @@ def main():
         f"⏰ Daily report scheduled at {h:02d}:{m:02d} IST "
         f"({utc_h:02d}:{utc_m:02d} UTC)"
     )
+    return app
 
+
+async def _run_scheduler_only():
+    """Run only the daily job (no polling). Use when another instance handles commands."""
+    app = _build_app()
+    await app.initialize()
+    await app.start()
+    logger.info("✅ Scheduler-only mode: daily report will run at 09:00 IST. No polling.")
+    try:
+        while True:
+            await asyncio.sleep(3600)
+    except asyncio.CancelledError:
+        pass
+    finally:
+        await app.stop()
+        await app.shutdown()
+
+
+def main():
+    # Ensure main thread has an event loop (avoids DeprecationWarning / RuntimeError)
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is None:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
+    logger.info("🚀 StockBot starting...")
+
+    if SCHEDULER_ONLY:
+        asyncio.run(_run_scheduler_only())
+        return
+
+    app = _build_app()
     logger.info("✅ Bot is polling. Press Ctrl+C to stop.")
     app.run_polling(drop_pending_updates=True)
 

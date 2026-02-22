@@ -193,6 +193,7 @@ docker compose logs -f
 4. In the service → **Variables**, add:
    - `TELEGRAM_BOT_TOKEN` = your bot token from @BotFather  
    - `TELEGRAM_CHAT_ID` = your numeric chat ID from @userinfobot  
+   - `BOT_SCHEDULER_ONLY=1` if you also run the bot locally (avoids "Conflict: only one bot instance").
 5. Deploy. The bot runs as a long-lived worker (no port needed). Check **Deployments** → **View Logs** for output.
 
 **Note:** Railway gives ~$5/month free credit. The bot is a worker process and will restart automatically on failure (`restartPolicyType: ALWAYS` in `railway.json`).
