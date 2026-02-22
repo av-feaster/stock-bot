@@ -65,3 +65,5 @@ NEWS_SOURCES: list[str] = [
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 LOG_FILE: str = "logs/bot.log"
+# Set to 1/true to log every NSE HTTP request (URL + status) in bot.log / console
+LOG_HTTP: bool = os.getenv("LOG_HTTP", "").lower() in ("1", "true", "yes")

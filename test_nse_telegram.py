@@ -4,13 +4,21 @@ Test NSE APIs (same flow as /report) and optionally send result to Telegram.
 Run: python test_nse_telegram.py
 """
 import asyncio
+import logging
 import os
 import sys
 
 os.makedirs("logs", exist_ok=True)
 os.makedirs("data", exist_ok=True)
 
-from config.settings import CHAT_ID, TRACKED_STOCKS
+logging.basicConfig(
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    level=logging.INFO,
+)
+from config.settings import CHAT_ID, TRACKED_STOCKS, LOG_HTTP
+
+if LOG_HTTP:
+    logging.getLogger("urllib3").setLevel(logging.INFO)
 from modules.market_data import MarketDataFetcher
 from modules.technical import TechnicalAnalyzer
 from config.settings import TELEGRAM_TOKEN

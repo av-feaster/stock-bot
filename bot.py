@@ -22,6 +22,7 @@ from config.settings import (
     DAILY_REPORT_TIME_IST,
     TRACKED_STOCKS,
     SCHEDULER_ONLY,
+    LOG_HTTP,
 )
 from modules.market_data import MarketDataFetcher
 from modules.technical import TechnicalAnalyzer
@@ -38,6 +39,10 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("StockBot")
+
+# Log NSE HTTP requests (URL + status) when LOG_HTTP=1
+if LOG_HTTP:
+    logging.getLogger("urllib3").setLevel(logging.INFO)
 
 
 # ──────────────────────────────────────────────
