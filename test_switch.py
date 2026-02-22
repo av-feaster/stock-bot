@@ -18,7 +18,7 @@ async def test_switch():
     
     # Mock update and context
     update = Mock()
-    update.effective_chat.id = "5932641837"  # Your chat ID
+    update.effective_chat.id = os.getenv("TELEGRAM_CHAT_ID", "123456789")  # Use environment variable
     update.message.reply_text = AsyncMock()
     
     context = Mock()
