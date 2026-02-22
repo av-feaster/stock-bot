@@ -13,7 +13,8 @@ stock_bot/
 ├── config/
 │   └── settings.py         # All config (stocks, thresholds, schedule)
 ├── modules/
-│   ├── market_data.py      # OHLCV + index data (yfinance)
+│   ├── market_data.py      # OHLCV + index data (NSE via OpenChart)
+│   ├── nse_data.py         # NSE historical data (OpenChart)
 │   ├── technical.py        # RSI, MACD, EMA, volume, pattern analysis
 │   ├── news.py             # RSS news headlines (Google News)
 │   ├── formatter.py        # Telegram Markdown message builder
@@ -248,7 +249,7 @@ docker compose logs -f
 | Package | Purpose |
 |---|---|
 | `python-telegram-bot` | Telegram Bot API + job queue |
-| `yfinance` | Free NSE/BSE OHLCV & index data |
+| `openchart` | NSE India OHLCV & index data (no API key) |
 | `pandas-ta` | RSI, MACD, EMA calculations |
 | `feedparser` | RSS news parsing |
 | `python-dotenv` | Environment variable management |
@@ -262,7 +263,7 @@ docker compose logs -f
 → Verify `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` in `.env`
 
 **No market data?**
-→ NSE data via yfinance sometimes has delays. Try `/report` after 9:15 AM IST (market open).
+→ Data is from NSE via OpenChart. Try `/report` after 9:15 AM IST (market open). Ensure `openchart` is installed.
 
 **News not loading?**
 → Google News RSS can throttle requests. This is non-critical; bot will show "No recent headlines."

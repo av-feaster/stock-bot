@@ -43,10 +43,7 @@ MACD_SIGNAL: int               = 9
 LOOKBACK_DAYS: int             = 120   # OHLCV history to fetch
 
 # ── Data source ───────────────────────────────────────────────────────────────
-# yfinance tickers use ".NS" suffix for NSE stocks
-YF_SUFFIX: str = ".NS"
-
-# NSE indices
+# NSE indices (display name -> legacy id; data fetched via OpenChart)
 INDICES: dict[str, str] = {
     "NIFTY 50":         "^NSEI",
     "NIFTY MIDCAP 150": "NIFTY_MID_SELECT.NS",
