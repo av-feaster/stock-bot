@@ -252,33 +252,22 @@ async def _run_scheduler_only():
         await app.shutdown()
 
 
-async def main_async():
+def main():
+    # Ensure main thread has an event loop (avoids DeprecationWarning / RuntimeError)
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
     logger.info("🚀 StockBot starting...")
 
     if SCHEDULER_ONLY:
-        await _run_scheduler_only()
+        asyncio.run(_run_scheduler_only())
         return
 
     app = _build_app()
     logger.info("✅ Bot is polling. Press Ctrl+C to stop.")
-    
-    # Clear any pending updates to avoid conflicts
-    await app.bot.delete_webhook(drop_pending_updates=True)
-    await app.initialize()
-    await app.start()
-    
     app.run_polling(drop_pending_updates=True)
-
-def main():
-    # Ensure main thread has an event loop (avoids DeprecationWarning / RuntimeError)
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
-    if loop is None:
-        asyncio.set_event_loop(asyncio.new_event_loop())
-
-    asyncio.run(main_async())
 
 
 if __name__ == "__main__":
