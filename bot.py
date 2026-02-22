@@ -112,6 +112,7 @@ async def scheduled_report(context: ContextTypes.DEFAULT_TYPE):
 # ──────────────────────────────────────────────
 
 async def cmd_start(update, context: ContextTypes.DEFAULT_TYPE):
+    current_mode = "Scheduler-Only" if SCHEDULER_ONLY else "Full Polling"
     await update.message.reply_text(
         "👋 *StockBot is live!*\n\n"
         "Commands:\n"
@@ -119,7 +120,9 @@ async def cmd_start(update, context: ContextTypes.DEFAULT_TYPE):
         "/signal TICKER — Signal for one stock\n"
         "/watchlist — Show tracked stocks\n"
         "/status — Bot health status\n"
-        "/help — This message",
+        "/switch — Toggle polling/scheduler mode\n"
+        "/help — This message\n\n"
+        f"🔄 Current mode: **{current_mode}**",
         parse_mode="Markdown",
     )
 
@@ -157,6 +160,47 @@ async def cmd_status(update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(status, parse_mode="Markdown")
 
 
+async def cmd_switch(update, context: ContextTypes.DEFAULT_TYPE):
+    """Switch between polling and scheduler-only modes (admin only)."""
+    # Only allow the configured chat ID to switch modes
+    if str(update.effective_chat.id) != CHAT_ID:
+        await update.message.reply_text("❌ Admin only command")
+        return
+    
+    args = context.args
+    if not args:
+        current_mode = "Scheduler-Only" if SCHEDULER_ONLY else "Full Polling"
+        await update.message.reply_text(
+            f"🔄 Current mode: **{current_mode}**\n\n"
+            "Usage: `/switch polling` or `/switch scheduler`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    mode = args[0].lower()
+    if mode == "polling":
+        # Set environment variable for next restart
+        os.environ["BOT_SCHEDULER_ONLY"] = "0"
+        await update.message.reply_text(
+            "🔄 Switching to **Full Polling Mode**\n"
+            "⚠️ Restart required: Redeploy on Railway or restart locally",
+            parse_mode="Markdown"
+        )
+    elif mode == "scheduler":
+        # Set environment variable for next restart
+        os.environ["BOT_SCHEDULER_ONLY"] = "1"
+        await update.message.reply_text(
+            "🔄 Switching to **Scheduler-Only Mode**\n"
+            "⚠️ Restart required: Redeploy on Railway or restart locally",
+            parse_mode="Markdown"
+        )
+    else:
+        await update.message.reply_text(
+            "❌ Invalid mode. Use: `/switch polling` or `/switch scheduler`",
+            parse_mode="Markdown"
+        )
+
+
 # ──────────────────────────────────────────────
 # App entry point
 # ──────────────────────────────────────────────
@@ -171,6 +215,7 @@ def _build_app() -> Application:
     app.add_handler(CommandHandler("signal",    cmd_signal))
     app.add_handler(CommandHandler("watchlist", cmd_watchlist))
     app.add_handler(CommandHandler("status",    cmd_status))
+    app.add_handler(CommandHandler("switch",    cmd_switch))
 
     h, m = DAILY_REPORT_TIME_IST
     utc_h = (h - 5) % 24
