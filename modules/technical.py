@@ -1,6 +1,7 @@
 """
 Technical analysis engine.
 Computes RSI, MACD, EMAs, volume signals, and pattern labels.
+Uses pandas/numpy only (no pandas-ta/numba) for broad Python compatibility.
 """
 
 import logging
@@ -9,7 +10,6 @@ from typing import Optional
 
 import numpy as np
 import pandas as pd
-import pandas_ta as ta  # pip install pandas-ta
 
 from config.settings import (
     EMA_SHORT,
@@ -24,6 +24,32 @@ from config.settings import (
 )
 
 logger = logging.getLogger("Technical")
+
+
+def _ema(series: pd.Series, length: int) -> pd.Series:
+    """Exponential moving average."""
+    return series.ewm(span=length, adjust=False).mean()
+
+
+def _rsi(series: pd.Series, length: int = 14) -> pd.Series:
+    """RSI (Wilder smoothing)."""
+    delta = series.diff()
+    gain = delta.clip(lower=0)
+    loss = (-delta).clip(lower=0)
+    avg_gain = gain.ewm(alpha=1 / length, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / length, adjust=False).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    return 100 - (100 / (1 + rs))
+
+
+def _macd(close: pd.Series, fast: int, slow: int, signal: int) -> tuple[pd.Series, pd.Series, pd.Series]:
+    """MACD line, signal line, histogram. Returns (macd_line, signal_line, histogram)."""
+    ema_fast = _ema(close, fast)
+    ema_slow = _ema(close, slow)
+    macd_line = ema_fast - ema_slow
+    signal_line = _ema(macd_line, signal)
+    hist = macd_line - signal_line
+    return macd_line, signal_line, hist
 
 
 @dataclass
@@ -125,26 +151,28 @@ class TechnicalAnalyzer:
             )
 
             # ── RSI ───────────────────────────────────────────────────────────
-            rsi_series = ta.rsi(close, length=14)
+            rsi_series = _rsi(close, length=14)
             if rsi_series is not None and not rsi_series.empty:
-                sig.rsi = round(float(rsi_series.iloc[-1]), 1)
+                last_rsi = rsi_series.iloc[-1]
+                if np.isfinite(last_rsi):
+                    sig.rsi = round(float(last_rsi), 1)
 
             # ── MACD ──────────────────────────────────────────────────────────
-            macd_df = ta.macd(
-                close,
-                fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL
+            macd_line, signal_line, _ = _macd(
+                close, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL
             )
-            if macd_df is not None and not macd_df.empty:
-                macd_line   = macd_df.iloc[-1, 0]  # MACD
-                signal_line = macd_df.iloc[-1, 2]  # Signal
-                sig.macd_bullish = bool(macd_line > signal_line)
+            if macd_line is not None and len(macd_line) > 0:
+                m = float(macd_line.iloc[-1])
+                s = float(signal_line.iloc[-1])
+                if np.isfinite(m) and np.isfinite(s):
+                    sig.macd_bullish = bool(m > s)
 
             # ── EMAs ──────────────────────────────────────────────────────────
-            ema20 = ta.ema(close, length=EMA_SHORT)
-            ema50 = ta.ema(close, length=EMA_LONG)
-            if ema20 is not None:
+            ema20 = _ema(close, EMA_SHORT)
+            ema50 = _ema(close, EMA_LONG)
+            if ema20 is not None and len(ema20) > 0:
                 sig.above_ema20 = bool(close.iloc[-1] > ema20.iloc[-1])
-            if ema50 is not None:
+            if ema50 is not None and len(ema50) > 0:
                 sig.above_ema50 = bool(close.iloc[-1] > ema50.iloc[-1])
 
             # ── Volume spike ──────────────────────────────────────────────────

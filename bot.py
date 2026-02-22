@@ -9,6 +9,10 @@ import logging
 import os
 from datetime import time as dtime
 
+# Ensure runtime dirs exist before logging to file
+os.makedirs("logs", exist_ok=True)
+os.makedirs("data", exist_ok=True)
+
 from telegram import Bot
 from telegram.ext import Application, CommandHandler, ContextTypes, JobQueue
 
@@ -152,6 +156,12 @@ async def cmd_status(update, context: ContextTypes.DEFAULT_TYPE):
 # ──────────────────────────────────────────────
 
 def main():
+    # Python 3.14+ may not set an event loop on the main thread
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
+
     logger.info("🚀 StockBot starting...")
 
     app = Application.builder().token(TELEGRAM_TOKEN).build()
