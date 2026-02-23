@@ -134,79 +134,113 @@ class TechnicalAnalyzer:
         sig.rr_ratio   = lvl.get("rr",    "—")
         sig.pattern    = lvl.get("pattern","—")
 
-        if df.empty or len(df) < 30:
+        if df.empty or len(df) < 1:
             sig.error = "Insufficient data"
             sig.overall_signal = "NO DATA"
             sig.signal_emoji   = "❓"
             return sig
 
         try:
-            close  = df["Close"].squeeze()
-            volume = df["Volume"].squeeze()
+            # Handle both single-row and multi-row DataFrames
+            if len(df) == 1:
+                close = df["Close"]
+                volume = df["Volume"]
+            else:
+                close = df["Close"]
+                volume = df["Volume"]
 
             # ── Price action ──────────────────────────────────────────────────
-            sig.cmp        = round(float(close.iloc[-1]), 2)
-            sig.change_pct = round(
-                float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100), 2
-            )
+            sig.cmp = round(float(close.iloc[-1]), 2)
+            
+            # Only calculate change percentage if we have at least 2 data points
+            if len(close) >= 2:
+                sig.change_pct = round(
+                    float((close.iloc[-1] - close.iloc[-2]) / close.iloc[-2] * 100), 2
+                )
 
-            # ── RSI ───────────────────────────────────────────────────────────
-            rsi_series = _rsi(close, length=14)
-            if rsi_series is not None and not rsi_series.empty:
-                last_rsi = rsi_series.iloc[-1]
-                if np.isfinite(last_rsi):
-                    sig.rsi = round(float(last_rsi), 1)
+            # ── Technical indicators (only if we have enough data) ─────────────
+            if len(close) >= 30:  # Only calculate indicators with sufficient data
+                # ── RSI ───────────────────────────────────────────────────────
+                rsi_series = _rsi(close, length=14)
+                if rsi_series is not None and not rsi_series.empty:
+                    last_rsi = rsi_series.iloc[-1]
+                    if np.isfinite(last_rsi):
+                        sig.rsi = round(float(last_rsi), 1)
 
-            # ── MACD ──────────────────────────────────────────────────────────
-            macd_line, signal_line, _ = _macd(
-                close, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL
-            )
-            if macd_line is not None and len(macd_line) > 0:
-                m = float(macd_line.iloc[-1])
-                s = float(signal_line.iloc[-1])
-                if np.isfinite(m) and np.isfinite(s):
-                    sig.macd_bullish = bool(m > s)
+                # ── MACD ──────────────────────────────────────────────────────
+                macd_line, signal_line, _ = _macd(
+                    close, fast=MACD_FAST, slow=MACD_SLOW, signal=MACD_SIGNAL
+                )
+                if macd_line is not None and len(macd_line) > 0:
+                    m = float(macd_line.iloc[-1])
+                    s = float(signal_line.iloc[-1])
+                    if np.isfinite(m) and np.isfinite(s):
+                        sig.macd_bullish = bool(m > s)
 
-            # ── EMAs ──────────────────────────────────────────────────────────
-            ema20 = _ema(close, EMA_SHORT)
-            ema50 = _ema(close, EMA_LONG)
-            if ema20 is not None and len(ema20) > 0:
-                sig.above_ema20 = bool(close.iloc[-1] > ema20.iloc[-1])
-            if ema50 is not None and len(ema50) > 0:
-                sig.above_ema50 = bool(close.iloc[-1] > ema50.iloc[-1])
+                # ── EMAs ──────────────────────────────────────────────────────
+                ema20 = _ema(close, EMA_SHORT)
+                ema50 = _ema(close, EMA_LONG)
+                if ema20 is not None and len(ema20) > 0:
+                    sig.above_ema20 = bool(close.iloc[-1] > ema20.iloc[-1])
+                if ema50 is not None and len(ema50) > 0:
+                    sig.above_ema50 = bool(close.iloc[-1] > ema50.iloc[-1])
 
-            # ── Volume spike ──────────────────────────────────────────────────
-            avg_vol = float(volume.iloc[-20:].mean())
-            cur_vol = float(volume.iloc[-1])
-            sig.volume_ratio = round(cur_vol / avg_vol, 2) if avg_vol else None
-            sig.volume_spike = bool(
-                sig.volume_ratio and sig.volume_ratio >= VOLUME_SPIKE_MULTIPLIER
-            )
+                # ── Volume spike ──────────────────────────────────────────────
+                if len(volume) >= 20:
+                    avg_vol = float(volume.iloc[-20:].mean())
+                    cur_vol = float(volume.iloc[-1])
+                    sig.volume_ratio = round(cur_vol / avg_vol, 2) if avg_vol else None
+                    sig.volume_spike = bool(
+                        sig.volume_ratio and sig.volume_ratio >= VOLUME_SPIKE_MULTIPLIER
+                    )
+            else:
+                # Not enough data for technical analysis - set basic signal based on price movement
+                sig.notes.append("Limited data: Only current price available")
 
             # ── Composite signal ──────────────────────────────────────────────
-            bullish_count = sum([
-                sig.macd_bullish,
-                sig.above_ema20,
-                sig.above_ema50,
-                sig.volume_spike,
-                sig.rsi is not None and RSI_BULLISH_ZONE <= sig.rsi < RSI_OVERBOUGHT,
-            ])
+            if len(close) >= 30:
+                # Full technical analysis available
+                bullish_count = sum([
+                    sig.macd_bullish,
+                    sig.above_ema20,
+                    sig.above_ema50,
+                    sig.volume_spike,
+                    sig.rsi is not None and RSI_BULLISH_ZONE <= sig.rsi < RSI_OVERBOUGHT,
+                ])
 
-            if bullish_count >= 4:
-                sig.overall_signal = "STRONG BUY"
-                sig.signal_emoji   = "🟢"
-            elif bullish_count == 3:
-                sig.overall_signal = "BUY"
-                sig.signal_emoji   = "🟢"
-            elif bullish_count == 2:
-                sig.overall_signal = "WATCH"
-                sig.signal_emoji   = "🟡"
-            elif bullish_count == 1:
-                sig.overall_signal = "NEUTRAL"
-                sig.signal_emoji   = "⚪"
+                if bullish_count >= 4:
+                    sig.overall_signal = "STRONG BUY"
+                    sig.signal_emoji   = "🟢"
+                elif bullish_count == 3:
+                    sig.overall_signal = "BUY"
+                    sig.signal_emoji   = "🟢"
+                elif bullish_count == 2:
+                    sig.overall_signal = "WATCH"
+                    sig.signal_emoji   = "🟡"
+                elif bullish_count == 1:
+                    sig.overall_signal = "NEUTRAL"
+                    sig.signal_emoji   = "⚪"
+                else:
+                    sig.overall_signal = "CAUTION"
+                    sig.signal_emoji   = "🔴"
             else:
-                sig.overall_signal = "CAUTION"
-                sig.signal_emoji   = "🔴"
+                # Limited data - base signal on price movement only
+                if sig.change_pct is not None:
+                    if sig.change_pct > 2:
+                        sig.overall_signal = "WATCH"
+                        sig.signal_emoji   = "🟡"
+                    elif sig.change_pct > 0:
+                        sig.overall_signal = "NEUTRAL"
+                        sig.signal_emoji   = "⚪"
+                    elif sig.change_pct > -2:
+                        sig.overall_signal = "NEUTRAL"
+                        sig.signal_emoji   = "⚪"
+                    else:
+                        sig.overall_signal = "CAUTION"
+                        sig.signal_emoji   = "🔴"
+                else:
+                    sig.overall_signal = "NEUTRAL"
+                    sig.signal_emoji   = "⚪"
 
             # ── Notes ─────────────────────────────────────────────────────────
             if sig.rsi and sig.rsi < RSI_OVERSOLD:
